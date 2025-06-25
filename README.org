@@ -445,11 +445,19 @@ Different LLMs can be used at the same time together:
 #+begin_src emacs-lisp
   (setq gt-default-translator
         (gt-translator :taker (gt-taker :pick nil :prompt t)
-                       :engines
-                       (list (gt-chatgpt-engine :model "gpt-4o-mini")
-                             (gt-chatgpt-engine :model "deepseek-v3")
-                             (gt-chatgpt-engine :model "deepseek-r1" :stream t
-                                                :prompt "Translate the text to {{lang}} and return the first word:\n\n{{text}}"))
+                       :engines (list
+                                 (gt-chatgpt-engine
+                                  :model "gpt-4o-mini")
+                                 (gt-chatgpt-engine
+                                  :host "https://api.deepseek.com"
+                                  :path "/chat/completions"
+                                  :model "deepseek-chat")
+                                 (gt-chatgpt-engine
+                                  :host "https://api.deepseek.com"
+                                  :path "/chat/completions"
+                                  :model "deepseek-reasoner"
+                                  :prompt "Translate the text to {{lang}} and return the first word:\n\n{{text}}"
+                                  :stream t))
                        :render (gt-buffer-render)))
 #+end_src
 
@@ -487,32 +495,32 @@ For example, the following command is used to send all the codes of the buffer t
 
 The following is a more general and practical command that performs a certain task on the selected text and output in a buffer. It's useful for daily usage.
 #+begin_src emacs-lisp
-  (defvar my-ai-oneshot-prompts
+  (defvar lnr-ai-oneshot-prompts
     (list "Polish the text" "Fix the errors in code"))
 
-  (defvar my-ai-oneshot-models
-    (list "deepseek-v3" "gpt-4o-mini" "gemini-2.5-pro"))
+  (defvar lnr-ai-oneshot-models
+    (list "deepseek-chat" "gpt-4o-mini" "gemini-2.5-pro"))
 
-  (defvar my-ai-oneshot-last-model nil)
+  (defvar lnr-ai-oneshot-last-model nil)
 
-  (defvar my-ai-oneshot-history nil)
+  (defvar lnr-ai-oneshot-history nil)
 
-  (defun my-ai-oneshot ()
+  (defun lnr-ai-oneshot ()
     "Use C-. C-, to switch model."
     (interactive)
     (require 'go-translate)
     (let ((prompt nil)
-          (model (or my-ai-oneshot-last-model
-                     (setq my-ai-oneshot-last-model (or (car my-ai-oneshot-models) gt-chatgpt-model)))))
+          (model (or lnr-ai-oneshot-last-model
+                     (setq lnr-ai-oneshot-last-model (or (car lnr-ai-oneshot-models) gt-chatgpt-model)))))
       (cl-flet ((get-prompts ()
                   (cl-delete-duplicates
-                   (append my-ai-oneshot-history my-ai-oneshot-prompts) :from-end t :test #'equal))
+                   (append lnr-ai-oneshot-history lnr-ai-oneshot-prompts) :from-end t :test #'equal))
                 (change-model (&optional prev)
-                  (let* ((pos (or (cl-position my-ai-oneshot-last-model my-ai-oneshot-models :test #'equal) -1))
-                         (next (if prev (max 0 (1- pos)) (min (1- (length my-ai-oneshot-models)) (1+ pos)))))
-                    (setq my-ai-oneshot-last-model (nth next my-ai-oneshot-models))
-                    (setq model my-ai-oneshot-last-model)
-                    (overlay-put (car (overlays-at 1)) 'after-string my-ai-oneshot-last-model))))
+                  (let* ((pos (or (cl-position lnr-ai-oneshot-last-model lnr-ai-oneshot-models :test #'equal) -1))
+                         (next (if prev (max 0 (1- pos)) (min (1- (length lnr-ai-oneshot-models)) (1+ pos)))))
+                    (setq lnr-ai-oneshot-last-model (nth next lnr-ai-oneshot-models))
+                    (setq model lnr-ai-oneshot-last-model)
+                    (overlay-put (car (overlays-at 1)) 'after-string lnr-ai-oneshot-last-model))))
         (setq prompt
               (minibuffer-with-setup-hook
                   (lambda ()
@@ -520,7 +528,7 @@ The following is a more general and practical command that performs a certain ta
                     (local-set-key (kbd "C-.") (lambda () (interactive) (change-model t)))
                     (overlay-put (make-overlay 1 9) 'after-string model)
                     (use-local-map (make-composed-keymap nil (current-local-map))))
-                (completing-read "Prompt (): " (get-prompts) nil nil nil 'my-ai-oneshot-history)))
+                (completing-read "Prompt (): " (get-prompts) nil nil nil 'lnr-ai-oneshot-history)))
         (gt-start (gt-translator
                    :taker (gt-taker
                            :text 'point :pick nil
@@ -565,6 +573,7 @@ For example:
   (let* ((rs (gt-chatgpt-send '(((role . user)      (content . "Which is the biggest lake in the world?"))
                                 ((role . assistant) (content . "Caspian Sea."))
                                 ((role . user)      (content . "I don't think so.")))
+               :url "https://api.deepseek.com/chat/completions" :model "deepseek-chat"
                :sync t))
          (content (let-alist rs (let-alist (aref .choices 0) .message.content))))
     (message ">>> %s" content))
@@ -579,7 +588,7 @@ For example:
     ;; answer by ChatGPT and DeepSeek
     (let* ((q1 "Which is the biggest lake in the world?")
            (rs (await (gt-chatgpt-send q1 :model "gpt-4o-mini")
-                      (gt-chatgpt-send q1 :model "deepseek-v3")))
+                      (gt-chatgpt-send q1 :model "deepseek-chat")))
            (c1 (let-alist (car rs)  (let-alist (aref .choices 0) .message.content)))
            (c2 (let-alist (cadr rs) (let-alist (aref .choices 0) .message.content))))
       (message ">>> ChatGPT:  %s" c1)
